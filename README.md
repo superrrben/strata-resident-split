@@ -17,13 +17,16 @@ Q4_K_XL has 71.7 GiB of routed experts. Two RTX 3090s hold about 34 GiB of them.
 
 ## Measured
 
-One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8, GPUs limited to 220 W / 1500 MHz. Same harness for every row, two runs each. Full table, methods and caveats: [docs/RESULTS.md](docs/RESULTS.md).
+One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8. Two runs per row, same day, same image and config. "Capped" is the author's everyday setting (220 W power cap, 1500 MHz clock lock, undervolt profile); "stock" is the cards' default limits (390 W / 350 W, no clock lock). Full table, methods and caveats: [docs/RESULTS.md](docs/RESULTS.md).
 
 | UD-Q4_K_XL, 262K context, MTP draft on | greedy tok/s | sampled tok/s | prefill at 60-250K | RAM left free |
 |---|---:|---:|---:|---:|
-| **this repo: resident split** | 66.7 / 67.3 | 69.0 / 70.1 | ~2,000 tok/s | **33 GiB** |
-| stock mmap mode (same image) | 45.5 | 51.6 | ~1,600 tok/s | 72 GiB |
+| **this repo, resident split, stock power** | **75.1 / 74.8** | **75.3 / 75.9** | 2,070-2,214 tok/s | **33 GiB** |
+| this repo, resident split, capped 220 W / 1500 MHz | 67.7 / 66.0 | 69.1 / 69.0 | 1,947-2,026 tok/s | 33 GiB |
+| stock mmap mode, capped (previous day) | 45.5 | 51.6 | ~1,600 tok/s | 72 GiB |
 | upstream split, pinned (**not run here**: needs ~135 GiB) | - | - | - | - |
+
+Stock power is about 12% faster on greedy decode and 9% on sampled for roughly 60% more board power (peak 1,995 MHz / 343 W against 1,500 MHz / 209 W). The cap is a choice for heat and stability, not something this repo needs.
 
 Upstream reports 64-78 tok/s for the pinned split on a 165 GiB box ([their docs/UNSLOTH_Q4.md](https://github.com/Niko1221/Strata/blob/v0.1.39/docs/UNSLOTH_Q4.md)). That is a different machine, so read it as "same ballpark", not a comparison.
 
