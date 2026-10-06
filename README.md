@@ -2,9 +2,11 @@
 
 Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/Niko1221/Strata) across **2x3090's and ~92 GB of RAM**, instead of the ~135 GB of RAM upstream's layer-split mode needs.
 
+> **Update 2026-10-06: Strata v0.1.40 includes these two changes upstream.** Its release adds "Resident RAM mode with a layer split" ([#848](https://github.com/Niko1221/Strata/issues/848), by Francesco Albano, with the same wrong-card copy-back fix as the patch here) and `tool_choice` `required` / named function (by Amir Guindehi). If you can use Strata v0.1.40 or newer, **use upstream and skip the patches.** This repo is for people on v0.1.39, and a record of the Q4_K_XL recipe, config and measurements on a 92 GiB box. I read the v0.1.40.1 source but have not yet run it on this setup; a test of stock v0.1.40.1 against the numbers below is in progress and will be added here.
+
 This is a small patch set on top of Strata v0.1.39 (tag `v0.1.39`, tree `27b0e86`; this was commit `6f32ec0` before upstream rewrote its history), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
 
-**What this adds over stock Strata:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (30-33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
+**What this adds over stock Strata v0.1.39:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (30-33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
 
 ## My goal
 
