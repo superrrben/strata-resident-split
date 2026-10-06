@@ -4,11 +4,11 @@ Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/
 
 This is a small patch set on top of Strata v0.1.39 (tag `v0.1.39`, tree `27b0e86`; this was commit `6f32ec0` before upstream rewrote its history), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
 
-**What this adds over stock Strata:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
+**What this adds over stock Strata:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (30-33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
 
 ## My goal
 
-Q4 has almost half the diverngence (KLD) score of IQ4 (https://unsloth.ai/docs/models/qwen3.8-next). Many strata build use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon taks, even though they are perfectly servicable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
+Q4 has about 44% lower KLD than IQ4 (mean 0.047 against 0.084, and 1.55 against 2.37 at the 99.9th percentile; [Unsloth's Qwen3.8 quant results](https://unsloth.ai/docs/models/qwen3.8-next)). Many Strata builds use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon tasks, even though they are perfectly serviceable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
 
 ## The setup
 
@@ -27,8 +27,8 @@ One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8. Two runs per r
 
 | UD-Q4_K_XL, 262K context, MTP draft on | greedy tok/s | sampled tok/s | prefill at 60-250K | RAM left free |
 |---|---:|---:|---:|---:|
-| **this repo, resident split, stock power** | **75.1 / 74.8** | **75.3 / 75.9** | 2,070-2,214 tok/s | **33 GiB** |
-| this repo, resident split, capped 220 W / 1500 MHz | 67.7 / 66.0 | 69.1 / 69.0 | 1,947-2,026 tok/s | 33 GiB |
+| **this repo, resident split, stock power** | **75.1 / 74.8** | **75.3 / 75.9** | 2,070-2,214 tok/s | **30-33 GiB** |
+| this repo, resident split, capped 220 W / 1500 MHz | 67.7 / 66.0 | 69.1 / 69.0 | 1,947-2,026 tok/s | 30-33 GiB |
 | stock mmap mode, capped (previous day) | 45.5 | 51.6 | ~1,600 tok/s | 72 GiB |
 | upstream split, pinned (**not run here**: needs ~135 GiB) | - | - | - | - |
 
@@ -40,7 +40,7 @@ Upstream reports 64-78 tok/s for the pinned split on a 165 GiB box ([their docs/
 
 - Linux, NVIDIA driver >= 580, Docker with the NVIDIA container toolkit
 - Two NVIDIA GPUs (tested: 2x RTX 3090). Other cards should work but are untested.
-- ~92 GiB RAM or more. At 92 GiB, 33 GiB stays free with the model running and ~26 GiB with large parked conversations. Much less will swap.
+- ~92 GiB RAM or more. At 92 GiB, 30-33 GiB stays free with the model running and ~26 GiB with large parked conversations. Much less will swap.
 - ~115 GB disk for the GGUF, ~7 GB for the pack and draft layer
 - This is **experimental** upstream (UD-Q4_K_XL) and experimental here. Read "Known limits" below.
 
@@ -94,6 +94,7 @@ Needle retrieval was checked at 128K (3 of 3). It was not checked at 250K on Q4_
 
 - **Tested on one machine.** Other GPU counts, VRAM sizes and RAM sizes are unmeasured. If the whole complement does not fit in RAM, upstream's `#467` path keeps the hottest experts and reads the rest from the GGUF.
 - **Not bit-repeatable.** The engine does not produce identical output across restarts, so "same tokens as stock" could not be checked. Checked instead: needle retrieval 3/3 at 128K, parked-and-restored conversations answer identically to a no-switching control (6/6, and 3/3 at 127K), and a repeated-run quality pack gave no sign of damage (a private pack, +-4 noise, so a hint and not a result).
+- **`--pcie-frac 0` is tuned for two x8 links.** It was measured only with both cards at x8 (about 13.4 GB/s each), where it beat the engine's own link probe by 6-10% on greedy decode. On an earlier x4 / x8 layout the probe's values were right and forcing a fraction (0.55) was 18-23% slower. On other layouts, remove the `--pcie-frac` / `0` pair from the config's `args` and let the engine probe.
 - **`allowed_hosts: "*"`** in the config turns off the server's Host-header check. The compose file binds to loopback by default for that reason; the server has no API key. Do not expose it to a network you do not trust.
 - `tool_choice` forcing has no constrained decoding. It was probed 5 times per case on one model and passed, which is not a guarantee.
 - Vision is not built (`BUILD_VISION=0`), and the `/v1/responses` endpoint with `tool_choice` was not tested.
@@ -108,7 +109,7 @@ Needle retrieval was checked at 128K (3 of 3). It was not checked at 250K on Q4_
 
 ## Upstream
 
-These patches are  upstream-friendly: if Strata's maintainers want the resident-split change, it is MIT and they are welcome to it. Please report engine bugs upstream only after reproducing on an unpatched build.
+These patches are upstream-friendly: if Strata's maintainers want the resident-split change, it is MIT and they are welcome to it. Please report engine bugs upstream only after reproducing on an unpatched build.
 
 ## License
 
