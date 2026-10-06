@@ -23,7 +23,7 @@ Q4_K_XL has 71.7 GiB of routed experts. Two RTX 3090s hold about 34 GiB of them.
 
 ## Measured
 
-One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8. Two runs per row, same day, same image and config. "Capped" is the author's everyday setting (220 W power cap, 1500 MHz clock lock, undervolt profile); "stock" is the cards' default limits (390 W / 350 W, no clock lock). Full table, methods and caveats: [docs/RESULTS.md](docs/RESULTS.md).
+One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8. Two runs per row, same day, same image and config. "Capped" is the author's everyday setting (220 W power cap, 1500 MHz clock lock, undervolt profile); "stock" is the cards' default limits (390 W / 350 W). Full table, methods and caveats: [docs/RESULTS.md](docs/RESULTS.md).
 
 | UD-Q4_K_XL, 262K context, MTP draft on | greedy tok/s | sampled tok/s | prefill at 60-250K | RAM left free |
 |---|---:|---:|---:|---:|
@@ -32,7 +32,7 @@ One machine: 2x RTX 3090 (24 GB), 92 GiB RAM, both cards PCIe x8. Two runs per r
 | stock mmap mode, capped (previous day) | 45.5 | 51.6 | ~1,600 tok/s | 72 GiB |
 | upstream split, pinned (**not run here**: needs ~135 GiB) | - | - | - | - |
 
-Stock power is about 12% faster on greedy decode and 9% on sampled for roughly 60% more board power (peak 1,995 MHz / 343 W against 1,500 MHz / 209 W). The cap is a choice for heat and stability, not something this repo needs.
+Stock power is about 12% faster on greedy decode and 9% on sampled for roughly 60% more board power (peak 1,995 MHz / 343 W against 1,500 MHz / 209 W). The cap is my choice for longevity, mileage may vary depending on your setup. 
 
 Upstream reports 64-78 tok/s for the pinned split on a 165 GiB box ([their docs/UNSLOTH_Q4.md](https://github.com/Niko1221/Strata/blob/v0.1.39/docs/UNSLOTH_Q4.md)). That is a different machine, so read it as "same ballpark", not a comparison.
 
@@ -95,7 +95,7 @@ Needle retrieval was checked at 128K (3 of 3). It was not checked at 250K on Q4_
 - **Tested on one machine.** Other GPU counts, VRAM sizes and RAM sizes are unmeasured. If the whole complement does not fit in RAM, upstream's `#467` path keeps the hottest experts and reads the rest from the GGUF.
 - **Not bit-repeatable.** The engine does not produce identical output across restarts, so "same tokens as stock" could not be checked. Checked instead: needle retrieval 3/3 at 128K, parked-and-restored conversations answer identically to a no-switching control (6/6, and 3/3 at 127K), and a repeated-run quality pack gave no sign of damage (a private pack, +-4 noise, so a hint and not a result).
 - **`--pcie-frac 0` is tuned for two x8 links.** It was measured only with both cards at x8 (about 13.4 GB/s each), where it beat the engine's own link probe by 6-10% on greedy decode. On an earlier x4 / x8 layout the probe's values were right and forcing a fraction (0.55) was 18-23% slower. On other layouts, remove the `--pcie-frac` / `0` pair from the config's `args` and let the engine probe.
-- **`allowed_hosts: "*"`** in the config turns off the server's Host-header check. The compose file binds to loopback by default for that reason; the server has no API key. Do not expose it to a network you do not trust.
+- **`allowed_hosts: "*"`** in the config turns off the server's Host-header check. The compose file binds to loopback by default for that reason; the server has no API key. 
 - `tool_choice` forcing has no constrained decoding. It was probed 5 times per case on one model and passed, which is not a guarantee.
 - Vision is not built (`BUILD_VISION=0`), and the `/v1/responses` endpoint with `tool_choice` was not tested.
 - `build.sh` and `prep.sh` were written for this repo from the scripts used on the original box. The patch application (`CHECK=1`) and the pack step (byte-identical `dense.bin`) were re-run from a clean state; the full docker build and the draft-layer download were not.
