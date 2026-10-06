@@ -16,6 +16,25 @@ Reference machine: 2x RTX 3090 24 GB, 92 GiB RAM, both cards PCIe x8 (bifurcatio
 
 Short-turn decode and prefill gains are consistent across runs. Deep decode single samples vary by +-5% or more (250K ran 77.8 and 71.1 on the same settings), so read those three percentages as "positive, size uncertain". Peak draw is the highest single-card sample; the peak clock and draw columns are taken from the harness's 5-second samples.
 
+## Stock Strata v0.1.40.1 against this repo's patched v0.1.39 (2026-10-06, capped)
+
+Upstream v0.1.40 includes the resident split with a layer split (#848) and `tool_choice`. Stock v0.1.40.1 (unpatched, built from the `v0.1.40.1` tag with a local CUDA base image) was run with the same Q4_K_XL resident config as above, capped (220 W / 1500 MHz / UV profile), two runs, the same afternoon as the patched capped runs. No Xid, temperatures 54-56 C, needles 3/3 in both runs.
+
+| | greedy | sampled | decode 60K / 128K / 250K | prefill 60K / 128K / 250K |
+|---|---|---|---|---|
+| stock v0.1.40.1 run 1 | 68.9 | 73.0 | 59.5 / 66.1 / 65.8 | 1950 / 2123 / 2067 |
+| stock v0.1.40.1 run 2 | 67.8 | 69.4 | 57.2 / 67.2 / 66.8 | 1922 / 2112 / 2072 |
+| patched v0.1.39 run 1 | 67.7 | 69.1 | 56.8 / 64.1 / 70.2 | 1947 / 2016 / 2026 |
+| patched v0.1.39 run 2 | 66.0 | 69.0 | 58.5 / 68.8 / 62.1 | 1960 / 2001 / 2024 |
+| **v0.1.40.1 vs v0.1.39 (means)** | +2% | +3% | +1% / +0.3% / +0.2% | -1% / +5% / +2% |
+
+A tie within noise: the two stock sampled runs differ by 3.6 tok/s among themselves, more than the means differ. Other work on the box during the runs could have contributed. The config in [config/](../config/strata-ud-q4_k_xl-resident-park.json) ran unchanged on v0.1.40.1.
+
+**`tool_choice` probes on stock v0.1.40.1** (`tests/tool-choice-probes.py`, 5 tries per case): passed `none`, a named function (5/5 against the grain), `auto` both ways and Anthropic `any`. Failed or partial: `required` with an unrelated prompt 0/5 (no call), `required` with a related prompt 3/5, streamed `required` 4/5, and no HTTP 400 for an unknown tool name or for `required` without tools.
+- The two 400 cases are by design upstream: its `forced_call` logs a bad value and acts as `auto` ("a client's odd choice must not stop its request").
+- The `required` failures are **not isolated**. Upstream writes the forced call's opening only after thinking ends, and the probe allows 400 tokens, so a model that thinks first may run out of budget. The patch in this repo renders forced calls without thinking. A rerun with thinking off or a larger `max_tokens` would show whether stock behaves the same; it was not done.
+- For comparison, every probe passed on the patched v0.1.39 build on 2026-10-05.
+
 ## UD-Q4_K_XL, capped, with the other modes (2026-10-05)
 
 - The cards hold 11,537 of 24,576 experts (33.7 GiB, about 97.8% of the routed mass by the expert profile); 38.03 GiB are page-locked in RAM.
