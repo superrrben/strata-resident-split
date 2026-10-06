@@ -4,6 +4,8 @@ Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/
 
 This is a small patch set on top of Strata v0.1.39 (`6f32ec0`), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
 
+**What this adds over stock Strata:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
+
 ## My goal
 
 Q4 has about half the KLD divergence score of IQ4. Many strata build use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon taks, even though they are perfectly servicable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
@@ -67,7 +69,7 @@ Optional check of the `tool_choice` patch: `URL=http://127.0.0.1:8080 N=5 tests/
 
 The shipped config ([`config/`](config/strata-ud-q4_k_xl-resident-park.json)): both GPUs with `layer_split: auto`, `--resident-experts`, 262,144 context with an int8 KV cache, MTP draft (`--spec 4`), `--pcie-frac 0`, and upstream's conversation parking (12 GiB, 6 slots) so sub-agents and alternating conversations restore from RAM instead of re-reading their prompt (details below). Sampling defaults are temperature 1.0 / top_p 0.95 / top_k 20.
 
-## Context size and multiple chats
+## Context size and multiple conversations
 
 **Context.** The shipped config allows up to **262,144 tokens** per conversation (int8 KV cache, the newest 32K of KV kept resident on the GPUs). Measured on the reference machine at stock power:
 
@@ -79,7 +81,7 @@ The shipped config ([`config/`](config/strata-ud-q4_k_xl-resident-park.json)): b
 
 Needle retrieval was checked at 128K (3 of 3). It was not checked at 250K on Q4_K_XL, so treat the top of the window as unverified recall. Lower `--max-context` in the config if you want to trade the window for VRAM headroom.
 
-**Multiple chats.** One conversation generates at a time, but several can stay open. The config enables Strata's conversation parking: up to **6 conversations** are kept in a **12 GiB** RAM cache, and switching between them restores the parked state instead of re-reading the prompt.
+**Multiple conversations.** One conversation generates at a time, but several can stay open and you can switch between them quickly. This is **upstream's** conversation parking (Strata 0.1.39), not something this repo adds; what the resident split adds is the RAM to hold it, because the pinned split needs ~135 GiB before any parking cache. The config enables it: up to **6 conversations** are kept in a **12 GiB** RAM cache, and switching between them restores the parked state instead of re-reading the prompt.
 
 - With a 145K-token parent and two 66K-token sub-agents taking turns, none of the 9 later turns had to re-read its history. Later rounds took 2.3-3.3 s, and about 26 GiB of RAM stayed free with all three parked.
 - Answers after a restore matched a no-switching control in every check (6 of 6 short, 3 of 3 at 127K).
