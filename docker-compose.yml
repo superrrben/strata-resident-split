@@ -1,0 +1,27 @@
+# MODELS=/path/to/models DATA=/path/to/strata-data docker compose up -d
+# The image's own entrypoint (upstream's setup.py) is bypassed: prep.sh made the pack and the config.
+services:
+  strata:
+    image: ${STRATA_IMAGE:-strata-resident-split:0.1.39}
+    container_name: strata
+    working_dir: /opt/strata
+    entrypoint: [".venv/bin/python", "-m", "serve.server", "--engine", "strata",
+                 "--config", "/data/config/${STRATA_CONFIG:-strata-ud-q4_k_xl-resident-park.json}",
+                 "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      # Loopback only: the server has no API key. Set STRATA_BIND=0.0.0.0 only on a network you trust.
+      - "${STRATA_BIND:-127.0.0.1}:${PORT:-8080}:8080"
+    volumes:
+      - ${DATA:?set DATA}:/data
+      - ${MODELS:?set MODELS}:/models:ro
+    ulimits:
+      memlock: -1          # the resident mode page-locks ~38 GiB; without this the lock fails
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: "no"

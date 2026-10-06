@@ -1,0 +1,198 @@
+diff --git a/serve/frontend.py b/serve/frontend.py
+index 02a1d2f..632d2c8 100644
+--- a/serve/frontend.py
++++ b/serve/frontend.py
+@@ -353,6 +353,45 @@ def anthropic_to_messages(req: dict, think_unasked: bool = True) -> tuple[list[d
+     return _late_system_to_user(messages), tools, kwargs
+ 
+ 
++# ------------------------------------------------------------------------------------------------ tool_choice
++def apply_tool_choice(choice, tools: list[dict] | None) -> tuple[list[dict] | None, str | None]:
++    """A request's "tool_choice" -> (the tools the template gets, the text the answer is made to start with).
++
++    Local patch (strata-resident-split): the field used to be ignored, so "none" still produced calls and a forced
++    call came back as plain text.  OpenAI: "auto" | "none" | "required" | {"type": "function", "function":
++    {"name": N}} (or {"type": "function", "name": N}).  Anthropic: {"type": "auto" | "none" | "any" | "tool",
++    "name": N}.
++      none      the tools are left out of the prompt, so the model cannot call one
++      required  the answer starts inside a call: `<tool_call>\n<function` (the template's format), and with one
++      / named   tool or a named one also its name - the model writes the rest.  There is no constrained
++                decoding: the arguments are the model's.  The caller renders the prompt without thinking.
++    ValueError (a 400) for a forced call without tools, an unknown name or an unknown value."""
++    if choice is None or choice == "auto" or (isinstance(choice, dict) and choice.get("type") == "auto"):
++        return tools, None
++    if choice == "none" or (isinstance(choice, dict) and choice.get("type") == "none"):
++        return None, None
++    name = None
++    if choice in ("required", "any") or (isinstance(choice, dict) and choice.get("type") in ("required", "any")):
++        pass
++    elif isinstance(choice, dict) and choice.get("type") in ("function", "tool"):
++        fn = choice.get("function") if isinstance(choice.get("function"), dict) else choice
++        name = fn.get("name")
++        if not isinstance(name, str) or not name:
++            raise ValueError("tool_choice names no function")
++    else:
++        raise ValueError(f"tool_choice={choice!r}: expected auto, none, required or a named function")
++    names = [t.get("name") for t in tools or [] if isinstance(t, dict)]
++    if not names:
++        raise ValueError("tool_choice forces a tool call, but the request has no tools")
++    if name is not None and name not in names:
++        raise ValueError(f"tool_choice names {name!r}, which is not one of the request's tools")
++    if name is None and len(names) == 1:
++        name = names[0]
++    # Unnamed: stop before the "=", because the tokenizer joins it to the name ("=get", "_weather"): a prompt
++    # ending in a lone "=" is a token sequence the model never wrote, and it then invented names ("web_search").
++    return tools, CALL_START + "\n<function" + ("=" + name + ">\n" if name else "")
++
++
+ # ------------------------------------------------------------------------------------------------ output parser
+ @dataclass
+ class ToolCall:
+diff --git a/serve/server.py b/serve/server.py
+index 9e66982..800beb2 100644
+--- a/serve/server.py
++++ b/serve/server.py
+@@ -52,7 +52,8 @@ ROOT = Path(__file__).resolve().parents[1]
+ sys.path.insert(0, str(ROOT / "tools"))
+ sys.path.insert(0, str(ROOT))   # run as a script (run-<model>.bat) as well as a module
+ from serve.frontend import (ChatTemplate, Event, OutputParser, anthropic_to_messages,  # noqa: E402
+-                            images_of, mark_think_literals, openai_to_messages, unmark_think_literals)
++                            apply_tool_choice, images_of, mark_think_literals, openai_to_messages,
++                            unmark_think_literals)
+ from serve.mcp import McpCancelled, hub_from_config  # noqa: E402
+ from serve import runconfig  # noqa: E402
+ from serve.winjob import contain  # noqa: E402
+@@ -657,15 +658,20 @@ class StrataEngine:
+         t = sampling.get("temperature")
+         if isinstance(t, (int, float)) and float(t) > 0.0:
+             keys += f" temperature={float(t)!r}"
++        # Local patch (strata-resident-split): an explicit temperature <= 0 is greedy, so the truncation keys are not
++        # sent either.  With a config `sampling` block the request's temperature=0 was merged with the block's
++        # top_p / top_k, those were forwarded without a temperature, and the engine sampled (4 answers to one
++        # temperature-0 prompt differed; the quality pack, which sends 0, fell from 130 to 122).
++        greedy = isinstance(t, (int, float)) and not isinstance(t, bool) and float(t) <= 0.0
+         tp = sampling.get("top_p")
+-        if isinstance(tp, (int, float)) and float(tp) < 1.0:
++        if not greedy and isinstance(tp, (int, float)) and float(tp) < 1.0:
+             keys += f" top_p={float(tp)!r}"
+         tk = sampling.get("top_k")
+-        if isinstance(tk, int) and not isinstance(tk, bool) and tk >= 0:
++        if not greedy and isinstance(tk, int) and not isinstance(tk, bool) and tk >= 0:
+             # the engine's sampled path keeps at most 64 candidates: 0 ("off") and wider lists get all 64
+             keys += f" top_k={tk if 1 <= tk <= 64 else 64}"
+         mp = sampling.get("min_p")
+-        if isinstance(mp, (int, float)) and 0.0 < float(mp) <= 1.0:
++        if not greedy and isinstance(mp, (int, float)) and 0.0 < float(mp) <= 1.0:
+             keys += f" min_p={float(mp)!r}"
+         rp = sampling.get("repetition_penalty")
+         rp_on = isinstance(rp, (int, float)) and float(rp) != 1.0
+@@ -687,7 +693,7 @@ class StrataEngine:
+             else:
+                 keys += " penalty_last_n=64"
+         seed = sampling.get("seed")
+-        if isinstance(seed, int) and seed > 0:
++        if not greedy and isinstance(seed, int) and seed > 0:
+             keys += f" seed={seed}"
+         # setup's calibration (tools/calibrate.py): engine settings for this request only, measured without a restart
+         tune = sampling.get("strata_tune")
+@@ -2205,6 +2211,26 @@ class Service:
+             max_new = max(1, room)          # --fit-max-tokens: a shorter completion beats a 400
+         return ids, kwargs.get("enable_thinking", True) is not False, max_new
+ 
++    def forced_call(self, req, ids, forced, max_new):
++        """tool_choice (local patch): end the prompt inside the forced call and tell run() about it through the
++        request (its `sampling`), so nothing per-request is kept on the service.  -> (ids, max_new): the prefix
++        is part of the prompt, so the room prepare() worked out shrinks by its length."""
++        req.pop(FORCED_CALL_KEY, None)                  # only this server sets it: a client's value is dropped
++        if not forced:
++            return ids, max_new
++        req[FORCED_CALL_KEY] = forced
++        if not forced.endswith(">\n"):
++            # "required" with several tools: the model picks the name itself, and nothing constrains it to the
++            # listed ones.  Greedy it chose a listed tool 10 of 10 times; at temperature 1.0 it invented one
++            # ("lookup") 2 of 5 times.  So this request decodes greedy, whatever sampling it asked for.
++            req["temperature"] = 0
++        extra = self.tok.encode(forced, parse_special=True)
++        room = self.engine.max_context - CTX_SLACK - len(ids) - len(extra)
++        if room < 1:
++            raise ValueError(f"prompt ({len(ids)} tokens) + the forced tool call leaves no room to answer in the "
++                             f"context ({self.engine.max_context}); requests are never truncated")
++        return ids + extra, min(max_new, room)
++
+     def _note(self, n, evs, st=None, rate=None):
+         with self.status_lock:
+             s = self.status if st is None else st
+@@ -2249,6 +2275,10 @@ class Service:
+             req_values = {k: v for k, v in (sampling or {}).items() if v is not None}
+             sampling = {**defaults, **req_values}
+         parser = OutputParser(thinking=thinking, tools=tools, stream_tools=True)
++        # tool_choice (local patch): the prompt already ends with this text (forced_call), so the parser starts
++        # inside the call the model is continuing; its events are sent once the request has its turn
++        forced = sampling.get(FORCED_CALL_KEY) if isinstance(sampling, dict) else None
++        primed = parser.feed(forced) if forced else []
+         detok, n, finish = Detokenizer(self.tok), 0, "length"
+         run_tok, run_len, repeated = None, 0, False     # #606: the current run of one repeated token
+         thinking_n = 0                                  # tokens written while thinking (Responses' reasoning_tokens)
+@@ -2292,6 +2322,8 @@ class Service:
+                     before = getattr(self.engine, "last", None)
+                     last_print = time.time()
+                     prompt, thought = ids, 0            # thought: the reasoning tokens so far (the budget's count)
++                    for ev in primed:
++                        yield "event", ev
+                     while True:
+                         gen = self.engine.generate(prompt, max_new - n, sampling, cancel, embeddings=emb) if emb \
+                             else self.engine.generate(prompt, max_new - n, sampling, cancel)
+@@ -2699,6 +2731,9 @@ def openai_collect(chunks) -> dict:
+     return out
+ 
+ 
++FORCED_CALL_KEY = "_strata_forced_call"     # tool_choice: the text a forced call's answer starts with
++
++
+ def structured_chunks(chunks, validator):
+     """Buffer structured streams so a client never receives unvalidated content."""
+     buffered = []
+@@ -3361,12 +3396,18 @@ def make_handler(svc: Service):
+         def _openai(self, req):
+             req = svc.with_shared(req, "openai")
+             messages, tools, kw = openai_to_messages(req)
++            tools, forced = apply_tool_choice(req.get("tool_choice"), tools)
++            if forced:
++                kw = {"enable_thinking": False}               # the answer starts inside the call
+             messages, validator = prepare_format(req.get("response_format"), messages)
+             if validator is not None and (tools or req.get("strata_mcp")):
+                 raise ValueError("structured response_format with tools/MCP is not supported")
+             svc.load()
+             max_req = max_new = int(req.get("max_completion_tokens") or req.get("max_tokens") or 0)   # 0/-1: the rest
+             use_mcp = req.get("strata_mcp") is True and svc.mcp is not None      # the web app's opt-in (serve/mcp.py)
++            choice = req.get("tool_choice")
++            if choice == "none" or (isinstance(choice, dict) and choice.get("type") == "none"):
++                use_mcp = False                               # tool_choice none: MCP tools would put tools back
+             own = {t.get("name") for t in tools or [] if isinstance(t, dict)}   # #592: a second line of defence
+             if use_mcp:
+                 if not self._own_page("MCP tools can be used"):   # tools run with the user's rights on this PC
+@@ -3376,7 +3417,10 @@ def make_handler(svc: Service):
+                 use_mcp = bool(extra)
+                 tools = (tools or []) + extra or None
+             svc.reasoning_budget(req)                         # a bad value is a 400 before anything is sent
++            if forced and use_mcp:
++                raise ValueError("a forced tool_choice with MCP tools is not supported")
+             ids, thinking, max_new = svc.prepare(messages, tools, kw, max_new)
++            ids, max_new = svc.forced_call(req, ids, forced, max_new)
+             _debug_req("openai", req, messages, tools, max_new, thinking, len(ids))
+             cancel = threading.Event()
+             self._watch_client(cancel)                       # #430 #431
+@@ -3546,9 +3590,13 @@ def make_handler(svc: Service):
+             svc.load()
+             req = svc.with_shared(req, "anthropic")
+             messages, tools, kw = anthropic_to_messages(req, svc.anthropic_think_unasked)
++            tools, forced = apply_tool_choice(req.get("tool_choice"), tools)
++            if forced:
++                kw = {"enable_thinking": False}               # the answer starts inside the call
+             max_new = int(req.get("max_tokens") or 0)                  # 0/-1: the rest of the context
+             svc.reasoning_budget(req)                         # a bad value is a 400 before anything is sent
+             ids, thinking, max_new = svc.prepare(messages, tools, kw, max_new)
++            ids, max_new = svc.forced_call(req, ids, forced, max_new)
+             _debug_req("anthropic", req, messages, tools, max_new, thinking, len(ids))
+             cancel = threading.Event()
+             self._watch_client(cancel)                       # #430 #431
