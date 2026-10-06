@@ -8,7 +8,7 @@ This is a small patch set on top of Strata v0.1.39 (tag `v0.1.39`, tree `27b0e86
 
 ## My goal
 
-Q4 has about 44% lower KLD than IQ4 (mean 0.047 against 0.084, and 1.55 against 2.37 at the 99.9th percentile; [Unsloth's Qwen3.8 quant results](https://unsloth.ai/docs/models/qwen3.8-next)). Many Strata builds use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon tasks, even though they are perfectly serviceable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
+Q4 has about 44% lower KL divergence than IQ4 (mean 0.047 against 0.084, and 1.55 against 2.37 at the 99.9th percentile; [Unsloth's Qwen3.8 quant results](https://unsloth.ai/docs/models/qwen3.8-next)). Many Strata builds use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon tasks, even though they are perfectly serviceable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
 
 ## The setup
 
