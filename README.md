@@ -65,7 +65,28 @@ curl -s localhost:8080/health
 
 Optional check of the `tool_choice` patch: `URL=http://127.0.0.1:8080 N=5 tests/tool-choice-probes.py`.
 
-The shipped config ([`config/`](config/strata-ud-q4_k_xl-resident-park.json)): both GPUs with `layer_split: auto`, `--resident-experts`, 262,144 context with an int8 KV cache, MTP draft (`--spec 4`), `--pcie-frac 0`, and upstream's conversation parking (12 GiB, 6 slots) so sub-agents and alternating conversations restore in ~0.4 s instead of re-reading their prompt. Sampling defaults are temperature 1.0 / top_p 0.95 / top_k 20.
+The shipped config ([`config/`](config/strata-ud-q4_k_xl-resident-park.json)): both GPUs with `layer_split: auto`, `--resident-experts`, 262,144 context with an int8 KV cache, MTP draft (`--spec 4`), `--pcie-frac 0`, and upstream's conversation parking (12 GiB, 6 slots) so sub-agents and alternating conversations restore from RAM instead of re-reading their prompt (details below). Sampling defaults are temperature 1.0 / top_p 0.95 / top_k 20.
+
+## Context size and multiple chats
+
+**Context.** The shipped config allows up to **262,144 tokens** per conversation (int8 KV cache, the newest 32K of KV kept resident on the GPUs). Measured on the reference machine at stock power:
+
+| Prompt size | Prefill | Time to read the prompt | Decode afterwards |
+|---:|---:|---:|---:|
+| 60K tokens | ~2,075 tok/s | ~33 s | 59-60 tok/s |
+| 128K tokens | ~2,170 tok/s | ~63 s | 75-78 tok/s |
+| 250K tokens | ~2,210 tok/s | ~117 s | 71-78 tok/s |
+
+Needle retrieval was checked at 128K (3 of 3). It was not checked at 250K on Q4_K_XL, so treat the top of the window as unverified recall. Lower `--max-context` in the config if you want to trade the window for VRAM headroom.
+
+**Multiple chats.** One conversation generates at a time, but several can stay open. The config enables Strata's conversation parking: up to **6 conversations** are kept in a **12 GiB** RAM cache, and switching between them restores the parked state instead of re-reading the prompt.
+
+- With a 145K-token parent and two 66K-token sub-agents taking turns, none of the 9 later turns had to re-read its history. Later rounds took 2.3-3.3 s, and about 26 GiB of RAM stayed free with all three parked.
+- Answers after a restore matched a no-switching control in every check (6 of 6 short, 3 of 3 at 127K).
+- Each separate conversation takes a slot, including one-off scripts and web-UI chats. A seventh evicts the least recently used one, which costs a re-read, not an error. Roughly three conversations near 128K fill a 12 GiB cache.
+- Parallel generation (`--batch N`) works but is **not** enabled: on two cards it gave no extra throughput (slots carry no MTP draft, so 4 streams ran at 17-40 tok/s each, about what one stream does alone) and cost 8-17 GiB of RAM plus 4-8% solo speed. These batch figures are from the IQ4 build of the same engine, not re-run on Q4_K_XL.
+- To hold more or larger parked conversations, raise `--conversation-cache-mib` and `--conversation-cache-slots` in the config, and watch your free RAM.
+- The server ignores the `model` name in requests, so a client pointed at the wrong model name will still get this model.
 
 ## Known limits
 
