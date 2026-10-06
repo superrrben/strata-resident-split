@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
-# Build Strata v0.1.39 (6f32ec0) with the two patches in patches/ and tag it strata-resident-split:0.1.39.
+# Build Strata v0.1.39 with the two patches in patches/ and tag it strata-resident-split:0.1.39.
 #   ./build.sh                      clone upstream, apply the patches, docker build
 #   CUDA_ARCHITECTURES=86 ./build.sh   one GPU generation (default 86 = RTX 30; 89 = RTX 40, 120 = RTX 50)
 #   CHECK=1 ./build.sh              clone, apply and syntax-check the patches; build nothing
 # The upstream tree is cloned into a temp dir and patched there; nothing outside it is touched.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-PIN=6f32ec0
+# Pinned by tag AND by tree hash. Upstream's history was rewritten after this repo was first built (v0.1.39 was 6f32ec0, now a1641e9); the files
+# are identical, so the tree hash is the stable identity and a plain commit hash is not.
+PIN_TAG=v0.1.39
+PIN_TREE=27b0e86ffc000d325a9fbf0bd753ee5817eddaa7
 TAG=${TAG:-strata-resident-split:0.1.39}
 CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-86}
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 git clone --quiet https://github.com/Niko1221/Strata.git "$work/src"
-git -C "$work/src" checkout --quiet "$PIN"
-[ "$(git -C "$work/src" rev-parse --short HEAD)" = "$PIN" ] || { echo "FAIL: not at $PIN"; exit 1; }
+git -C "$work/src" checkout --quiet "$PIN_TAG"
+[ "$(git -C "$work/src" rev-parse 'HEAD^{tree}')" = "$PIN_TREE" ] || { echo "FAIL: $PIN_TAG is not the tree these patches were made against ($PIN_TREE)"; exit 1; }
 rm -rf "$work/src/.git"
 # -F0: no fuzz. Fuzz once put a hunk into the wrong class of a file and it still compiled.
 for p in resident-split-0.1.39 tool-choice-0.1.39; do

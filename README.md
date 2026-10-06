@@ -2,7 +2,7 @@
 
 Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/Niko1221/Strata) across **2x3090's and ~92 GB of RAM**, instead of the ~135 GB of RAM upstream's layer-split mode needs.
 
-This is a small patch set on top of Strata v0.1.39 (`6f32ec0`), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
+This is a small patch set on top of Strata v0.1.39 (tag `v0.1.39`, tree `27b0e86`; this was commit `6f32ec0` before upstream rewrote its history), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
 
 **What this adds over stock Strata:** Q4_K_XL runs in ~92 GiB of RAM instead of ~135 GiB (33 GiB stays free), about 1.5x the speed of the only mode that fits at that size on the same box (stock mmap: 45 to 67 tok/s greedy capped, 75 at stock power), and a working `tool_choice` (`none` / `required` / a named function), plus a pinned build, prep scripts and compose file with every measurement and caveat published.
 
@@ -49,7 +49,7 @@ Upstream reports 64-78 tok/s for the pinned split on a 165 GiB box ([their docs/
 ```bash
 git clone https://github.com/superrrben/strata-resident-split && cd strata-resident-split
 
-# 1. build the patched image (clones upstream at 6f32ec0, applies the patches, compiles ~minutes on every core)
+# 1. build the patched image (clones upstream at the v0.1.39 tag, applies the patches, compiles ~minutes on every core)
 CUDA_ARCHITECTURES=86 ./build.sh          # 86 = RTX 30xx, 89 = RTX 40xx, 120 = RTX 50xx
 #    CHECK=1 ./build.sh only verifies that the patches apply
 

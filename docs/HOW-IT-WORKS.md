@@ -18,7 +18,7 @@ The serve path and the non-serve (`generate`) path are both covered. The serve p
 
 ## Porting to other Strata versions
 
-The patch is against exactly `6f32ec0` and `build.sh` applies it with `patch -F0` (no fuzz). On 0.1.38 and 0.1.39 the context moved enough that fuzzy application put a hunk into the wrong class and **still compiled**. If you port it to a newer Strata, apply with `-F0`, read every hunk, and check the startup log for the line reporting the page-locked complement (`21.59 GiB` for IQ4 and `38.03 GiB` for Q4_K_XL on the reference box) and for the absence of the mmap-fallback warning.
+The patch is against exactly the `v0.1.39` tree (`27b0e86`) and `build.sh` applies it with `patch -F0` (no fuzz). On 0.1.38 and 0.1.39 the context moved enough that fuzzy application put a hunk into the wrong class and **still compiled**. If you port it to a newer Strata, apply with `-F0`, read every hunk, and check the startup log for the line reporting the page-locked complement (`21.59 GiB` for IQ4 and `38.03 GiB` for Q4_K_XL on the reference box) and for the absence of the mmap-fallback warning.
 
 ## What `tool-choice` does
 
