@@ -1,10 +1,14 @@
-# strata-resident-split
+# strata-resident-split: Qwen Flash Next Q4_K_XL - dual 3090's, 96gb ram, 75 tps decode with 33gb ram free. 
 
-Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/Niko1221/Strata) across **two 24 GB GPUs and ~92 GB of RAM**, instead of the ~135 GB of RAM upstream's layer-split mode needs.
+Run **Qwen3.8-Flash-Next at Unsloth UD-Q4_K_XL** on [Strata](https://github.com/Niko1221/Strata) across **2x3090's and ~92 GB of RAM**, instead of the ~135 GB of RAM upstream's layer-split mode needs.
 
 This is a small patch set on top of Strata v0.1.39 (`6f32ec0`), not a fork. Strata is MIT-licensed work by Niko1221 and contributors; all the engine credit is theirs.
 
-## The problem
+## My goal
+
+Q4 has about half the KLD divergence score of IQ4. Many strata build use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon taks, even though they are perfectly servicable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
+
+## The setup
 
 Q4_K_XL has 71.7 GiB of routed experts. Two RTX 3090s hold about 34 GiB of them. Upstream's layer split then loads **all** 77 GB of experts into pinned RAM and lets the OS file cache pass the files through while it loads, which upstream's docs size at ~135 GB of RAM. Without the split (mmap mode) the same box decodes at 45 tok/s.
 
@@ -72,9 +76,16 @@ The shipped config ([`config/`](config/strata-ud-q4_k_xl-resident-park.json)): b
 - Vision is not built (`BUILD_VISION=0`), and the `/v1/responses` endpoint with `tool_choice` was not tested.
 - `build.sh` and `prep.sh` were written for this repo from the scripts used on the original box. The patch application (`CHECK=1`) and the pack step (byte-identical `dense.bin`) were re-run from a clean state; the full docker build and the draft-layer download were not.
 
+## Hardware used
+- 2x 3090's pcie 4.0 x8 (second 3090 connected via a 20cm riser cable)
+- 96gb ddr5 6000mhz cl36
+- 9950x
+- Asus Proart X870E
+- Samsung 9100 pro 4tb
+
 ## Upstream
 
-These patches are offered upstream-friendly: if Strata's maintainers want the resident-split change, it is MIT and they are welcome to it. Please report engine bugs upstream only after reproducing on an unpatched build.
+These patches are  upstream-friendly: if Strata's maintainers want the resident-split change, it is MIT and they are welcome to it. Please report engine bugs upstream only after reproducing on an unpatched build.
 
 ## License
 
