@@ -8,7 +8,7 @@ This is a small patch set on top of Strata v0.1.39 (`6f32ec0`), not a fork. Stra
 
 ## My goal
 
-Q4 has about half the KLD divergence score of IQ4. Many strata build use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon taks, even though they are perfectly servicable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
+Q4 has about half the diverngence (KLD) score of IQ4 (https://unsloth.ai/docs/models/qwen3.8-next). Many strata build use IQ2 and IQ3. I personally do not trust these smaller quants for long horizon taks, even though they are perfectly servicable for most situations. My 96gb setup had me deeply regretting not getting 128gb ram, but with the awesome work done on Strata, Claude was able to help getting this Q4 setup to a mature spot with performance fit for daily driving. 
 
 ## The setup
 
