@@ -45,6 +45,8 @@ A tie within noise: the two stock sampled runs differ by 3.6 tok/s among themsel
 | Restore time at 65K / 145K tokens | 76-103 ms / 130-132 ms | 80-88 ms / 139-144 ms |
 | Park time at 65K tokens | 334-365 ms | 342-366 ms |
 
+**Quality and forced tool calls on stock v0.1.40.1** (one run each, capped, thinking off): a private 150-question pack scored **130** (the patched build scored 130 and 130 on 2026-10-05; the pack's noise is about +-4), and 10 forced tool calls in a row all produced a call (**10/10**, the patched build 10/10 twice). One run is no proof of equality, but it shows no sign of damage from the 314 commits between v0.1.39 and v0.1.40.1.
+
 The children's later rounds took 6.4-7.7 s against 2.3-3.3 s only because the model wrote longer answers that run (median 162 against 33 tokens per turn); restores and decode speed are the same. MemAvailable with all three parked was 21 GiB against 26 GiB on the patched build; part of that is the box (free RAM right after load was already 27-28 GiB against 30-33 GiB earlier that day), and it was not isolated.
 
 ## UD-Q4_K_XL, capped, with the other modes (2026-10-05)
