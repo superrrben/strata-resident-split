@@ -35,6 +35,18 @@ A tie within noise: the two stock sampled runs differ by 3.6 tok/s among themsel
 - The `required` failures were the probe's token budget, not a missing feature. Upstream writes the forced call's opening only after thinking ends, and the probe allowed 400 tokens, so a model that thinks first can run out (`finish_reason: length`). Rerun on the same stock build, 3 tries per case (unrelated prompt, related prompt, streamed): **400 tokens, default thinking 8/9** (the one miss ended in `length`); **4,000 tokens 9/9**; **400 tokens with `reasoning_effort: "none"` 9/9**. So `required` works on stock v0.1.40.1 when the budget allows or thinking is off; the first run's 7 of 15 on these cases was the same budget effect and varies run to run.
 - For comparison, every probe passed on the patched v0.1.39 build on 2026-10-05. That build renders forced calls without thinking, so it did not hit the budget limit.
 
+**Conversation parking on stock v0.1.40.1** (same checks as the patched build's gate, capped, static expert cache and snapshot verify on for the answer checks):
+
+| Check | stock v0.1.40.1 | patched v0.1.39 |
+|---|---|---|
+| Restored answers against a no-switching control | 6 of 6 identical | 6 of 6 |
+| 127K conversation between small ones | 3 of 3 identical | 3 of 3 |
+| 145K parent + two 66K children, 4 rounds: later turns without reuse | 0 of 9, 0 errors, 0 evictions | 0 of 9, 0 errors |
+| Restore time at 65K / 145K tokens | 76-103 ms / 130-132 ms | 80-88 ms / 139-144 ms |
+| Park time at 65K tokens | 334-365 ms | 342-366 ms |
+
+The children's later rounds took 6.4-7.7 s against 2.3-3.3 s only because the model wrote longer answers that run (median 162 against 33 tokens per turn); restores and decode speed are the same. MemAvailable with all three parked was 21 GiB against 26 GiB on the patched build; part of that is the box (free RAM right after load was already 27-28 GiB against 30-33 GiB earlier that day), and it was not isolated.
+
 ## UD-Q4_K_XL, capped, with the other modes (2026-10-05)
 
 - The cards hold 11,537 of 24,576 experts (33.7 GiB, about 97.8% of the routed mass by the expert profile); 38.03 GiB are page-locked in RAM.
