@@ -31,9 +31,9 @@ Upstream v0.1.40 includes the resident split with a layer split (#848) and `tool
 A tie within noise: the two stock sampled runs differ by 3.6 tok/s among themselves, more than the means differ. Other work on the box during the runs could have contributed. The config in [config/](../config/strata-ud-q4_k_xl-resident-park.json) ran unchanged on v0.1.40.1.
 
 **`tool_choice` probes on stock v0.1.40.1** (`tests/tool-choice-probes.py`, 5 tries per case): passed `none`, a named function (5/5 against the grain), `auto` both ways and Anthropic `any`. Failed or partial: `required` with an unrelated prompt 0/5 (no call), `required` with a related prompt 3/5, streamed `required` 4/5, and no HTTP 400 for an unknown tool name or for `required` without tools.
-- The two 400 cases are by design upstream: its `forced_call` logs a bad value and acts as `auto` ("a client's odd choice must not stop its request").
-- The `required` failures are **not isolated**. Upstream writes the forced call's opening only after thinking ends, and the probe allows 400 tokens, so a model that thinks first may run out of budget. The patch in this repo renders forced calls without thinking. A rerun with thinking off or a larger `max_tokens` would show whether stock behaves the same; it was not done.
-- For comparison, every probe passed on the patched v0.1.39 build on 2026-10-05.
+- The two 400 cases are by design upstream: its `forced_call` logs a bad value and acts as `auto` ("a client's odd choice must not stop its request"). The patch in this repo returns 400.
+- The `required` failures were the probe's token budget, not a missing feature. Upstream writes the forced call's opening only after thinking ends, and the probe allowed 400 tokens, so a model that thinks first can run out (`finish_reason: length`). Rerun on the same stock build, 3 tries per case (unrelated prompt, related prompt, streamed): **400 tokens, default thinking 8/9** (the one miss ended in `length`); **4,000 tokens 9/9**; **400 tokens with `reasoning_effort: "none"` 9/9**. So `required` works on stock v0.1.40.1 when the budget allows or thinking is off; the first run's 7 of 15 on these cases was the same budget effect and varies run to run.
+- For comparison, every probe passed on the patched v0.1.39 build on 2026-10-05. That build renders forced calls without thinking, so it did not hit the budget limit.
 
 ## UD-Q4_K_XL, capped, with the other modes (2026-10-05)
 
